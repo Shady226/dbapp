@@ -32,7 +32,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        value: https://previa-backend.onrender.com
+        value: https://previa-backend-5pl1.onrender.com
     routes:
       - type: rewrite
         source: /*
