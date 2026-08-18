@@ -25,7 +25,8 @@ _DELAY_BETWEEN_CALLS = 1.2  # secondes => ~50 req/min
 
 # Retry patient
 _MAX_RETRIES = 10
-_BASE_RETRY_DELAY = 65.0
+_BASE_RETRY_DELAY = 65.0  # 429 / quota depasse : Gemini demande d'attendre longtemps
+_OVERLOAD_RETRY_DELAY = 15.0  # 503 / service temporairement surcharge : plus court
 
 
 def _normalize(vector: list[float]) -> list[float]:
@@ -63,22 +64,29 @@ def _embed_one_with_retry(text: str, label: str = "") -> list[float]:
 
         except Exception as e:
             error_str = str(e)
-            if "429" not in error_str and "RESOURCE_EXHAUSTED" not in error_str:
+            is_rate_limit = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+            is_overloaded = "503" in error_str or "UNAVAILABLE" in error_str
+            if not is_rate_limit and not is_overloaded:
                 raise
 
-            api_delay = _extract_retry_delay(error_str)
-            wait = (api_delay + 10.0) if api_delay else _BASE_RETRY_DELAY
+            if is_rate_limit:
+                api_delay = _extract_retry_delay(error_str)
+                wait = (api_delay + 10.0) if api_delay else _BASE_RETRY_DELAY
+                reason = "Rate limit"
+            else:
+                wait = _OVERLOAD_RETRY_DELAY
+                reason = "Service Gemini surcharge (503)"
 
             if attempt < _MAX_RETRIES:
                 logger.warning(
-                    f"{label} Rate limit (tentative {attempt}/{_MAX_RETRIES}). "
+                    f"{label} {reason} (tentative {attempt}/{_MAX_RETRIES}). "
                     f"Pause de {wait:.0f}s..."
                 )
                 time.sleep(wait)
             else:
                 raise RuntimeError(
-                    f"Rate limit Gemini : {_MAX_RETRIES} tentatives echouees. "
-                    f"Attendez 5 min puis relancez."
+                    f"{reason} Gemini : {_MAX_RETRIES} tentatives echouees. "
+                    f"Reessayez dans quelques minutes."
                 ) from e
 
     raise RuntimeError("Echec inattendu.")
