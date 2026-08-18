@@ -6,9 +6,11 @@ load_dotenv()
 
 
 class Settings:
-    QDRANT_URL: str = os.getenv("QDRANT_URL", "")
-    QDRANT_API_KEY: str = os.getenv("QDRANT_API_KEY", "")
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    # .strip() protege contre les espaces/retours a la ligne colles par erreur
+    # dans les variables d'environnement (frequent en copiant depuis un .env).
+    QDRANT_URL: str = os.getenv("QDRANT_URL", "").strip()
+    QDRANT_API_KEY: str = os.getenv("QDRANT_API_KEY", "").strip()
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
 
     QDRANT_COLLECTION: str = os.getenv("QDRANT_COLLECTION", "previa_comportements")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
