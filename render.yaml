@@ -1,0 +1,39 @@
+services:
+  # --- Backend FastAPI ---
+  - type: web
+    name: previa-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION
+        value: previa_comportements
+      - key: EMBEDDING_MODEL
+        value: gemini-embedding-001
+      - key: EMBEDDING_DIM
+        value: "768"
+      - key: ALLOWED_ORIGINS
+        value: https://previa-frontend.onrender.com
+
+  # --- Frontend React (site statique) ---
+  - type: web
+    name: previa-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://previa-backend.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

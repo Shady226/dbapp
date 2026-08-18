@@ -1,0 +1,18 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Node / React (pour plus tard)
+node_modules/
+dist/
+build/
+
+# OS
+.DS_Store
+*.bak
