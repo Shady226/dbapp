@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from .config import settings
 from . import qdrant, ingest
@@ -185,3 +186,57 @@ def get_job_status(job_id: str):
     if job_id not in _jobs:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable")
     return _jobs[job_id]
+
+
+class SearchRequest(BaseModel):
+    text: str
+    top_k: int = 5
+    category: str | None = None  # "normal" ou "suspect" pour restreindre la recherche
+
+
+@app.post("/search")
+def search_similar(req: SearchRequest):
+    """Recherche par similarite : un modele d'IA soumet un comportement (texte),
+    on renvoie les comportements les plus proches deja indexes dans Qdrant,
+    avec une suggestion de classification normal/suspect basee sur les voisins.
+    """
+    if not req.text.strip():
+        raise HTTPException(status_code=422, detail="Le champ 'text' est vide.")
+    if req.category is not None and req.category not in CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Categorie invalide '{req.category}'. Attendu : {sorted(CATEGORIES)}",
+        )
+
+    try:
+        vector = embed_text(req.text)
+        results = qdrant.search_similar(vector, limit=req.top_k, category=req.category)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur de recherche : {e}")
+
+    # Suggestion de classification : moyenne des scores de similarite par categorie.
+    scores_by_category: dict[str, list[float]] = {}
+    for r in results:
+        cat = r["payload"].get("categorie_import", "inconnu")
+        scores_by_category.setdefault(cat, []).append(r["score"])
+
+    suggestion = None
+    if scores_by_category:
+        weight_by_category = {
+            cat: sum(scores) for cat, scores in scores_by_category.items()
+        }
+        best_category = max(weight_by_category, key=weight_by_category.get)
+        total_weight = sum(weight_by_category.values())
+        suggestion = {
+            "categorie_suggeree": best_category,
+            "confiance": round(weight_by_category[best_category] / total_weight, 3),
+            "nb_voisins_normal": len(scores_by_category.get("normal", [])),
+            "nb_voisins_suspect": len(scores_by_category.get("suspect", [])),
+        }
+
+    return {
+        "ok": True,
+        "query": req.text,
+        "resultats": results,
+        "suggestion": suggestion,
+    }

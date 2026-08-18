@@ -92,3 +92,32 @@ def stats() -> dict:
         "normal": count_points("normal"),
         "suspect": count_points("suspect"),
     }
+
+
+def search_similar(
+    vector: list[float],
+    limit: int = 5,
+    category: str | None = None,
+) -> list[dict]:
+    """Cherche les points les plus proches d'un vecteur donne.
+
+    category : si fourni, restreint la recherche a "normal" ou "suspect".
+    Retourne une liste de {score, payload}, triee par similarite decroissante.
+    """
+    query_filter = None
+    if category is not None:
+        query_filter = Filter(must=[
+            FieldCondition(
+                key=_INDEXED_FIELD,
+                match=MatchValue(value=category),
+            )
+        ])
+
+    result = client.query_points(
+        collection_name=settings.QDRANT_COLLECTION,
+        query=vector,
+        query_filter=query_filter,
+        limit=limit,
+        with_payload=True,
+    )
+    return [{"score": p.score, "payload": p.payload} for p in result.points]
