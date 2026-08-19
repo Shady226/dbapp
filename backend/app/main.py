@@ -21,7 +21,7 @@ CATEGORIES = {"normal", "suspect"}
 # Stockage en memoire des jobs d'import en cours / termines.
 _jobs: dict[str, dict] = {}
 
-
+co
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Au demarrage : s'assure que la collection Qdrant existe."""
@@ -239,4 +239,51 @@ def search_similar(req: SearchRequest):
         "query": req.text,
         "resultats": results,
         "suggestion": suggestion,
+    }
+
+
+class CompareRequest(BaseModel):
+    comportement: str
+
+
+@app.post("/compare")
+def compare_comportement(req: CompareRequest):
+    """Route simplifiee pour les systemes externes (ex : appli de detection camera).
+
+    Recoit un comportement en texte libre (formulation quelconque, pas besoin de
+    correspondre mot pour mot a la base), le compare par similarite semantique aux
+    comportements deja indexes, et renvoie un verdict direct : normal/suspect + le
+    type precis de comportement le plus proche trouve.
+    """
+    if not req.comportement.strip():
+        raise HTTPException(status_code=422, detail="Le champ 'comportement' est vide.")
+
+    try:
+        vector = embed_text(req.comportement)
+        results = qdrant.search_similar(vector, limit=5)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur de comparaison : {e}")
+
+    if not results:
+        raise HTTPException(status_code=404, detail="Aucun comportement de reference en base.")
+
+    # Verdict normal/suspect : moyenne des scores de similarite par categorie.
+    scores_by_category: dict[str, list[float]] = {}
+    for r in results:
+        cat = r["payload"].get("categorie_import", "inconnu")
+        scores_by_category.setdefault(cat, []).append(r["score"])
+    weight_by_category = {cat: sum(s) for cat, s in scores_by_category.items()}
+    best_category = max(weight_by_category, key=weight_by_category.get)
+    total_weight = sum(weight_by_category.values())
+
+    # Type precis de comportement : celui du voisin le plus proche (meilleur score).
+    plus_proche = results[0]
+
+    return {
+        "ok": True,
+        "resultat": best_category,
+        "type_comportement": plus_proche["payload"].get("categorie"),
+        "confiance": round(weight_by_category[best_category] / total_weight, 3),
+        "comportement_similaire_le_plus_proche": plus_proche["payload"].get("comportement"),
+        "score_similarite": round(plus_proche["score"], 3),
     }
