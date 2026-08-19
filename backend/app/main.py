@@ -21,7 +21,7 @@ CATEGORIES = {"normal", "suspect"}
 # Stockage en memoire des jobs d'import en cours / termines.
 _jobs: dict[str, dict] = {}
 
-co
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Au demarrage : s'assure que la collection Qdrant existe."""
